@@ -173,16 +173,13 @@ export default function ClientCreateProject() {
             <Label>
               기획 상태 <Required>*</Required>
             </Label>
-            <Select
+            <Input
+              type="text"
               value={planningStatus}
               onChange={(e) => setPlanningStatus(e.target.value)}
               required
-            >
-              <option value="">선택하세요</option>
-              <option value="아이디어만 있음">아이디어만 있음</option>
-              <option value="기획서 보유">기획서 보유</option>
-              <option value="상세 설계 완료">상세 설계 완료</option>
-            </Select>
+              placeholder="예: 아이디어만 있음, 화면 설계서 보유 등"
+            />
           </FormGroup>
 
           <FormGroup>

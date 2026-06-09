@@ -30,9 +30,8 @@ export default function ClientProjects() {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [allApplicants, setAllApplicants] = useState<Applicant[]>([]);
 
-  const [currentProjectId, setCurrentProjectId] = useState<number | null>(null);
-  const [modalPage, setModalPage] = useState(1);
-  const [hasNextPage, setHasNextPage] = useState(false);
+  const PAGE_SIZE = 2;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   const [viewMode, setViewMode] = useState<"overview" | "detail">("overview");
   const [selectedApplicant, setSelectedApplicant] = useState<Applicant | null>(
@@ -58,20 +57,16 @@ export default function ClientProjects() {
 
   const handleOpenDetails = async (project: Project) => {
     setSelectedProject(project);
-    setCurrentProjectId(project.id);
     setIsModalOpen(true);
     setModalLoading(true);
     setViewMode("overview");
-    setModalPage(1);
-    setAllApplicants([]);
+    setVisibleCount(PAGE_SIZE);
 
     try {
-      const response = await apiClient.get<{
-        items: Applicant[];
-        hasNext: boolean;
-      }>(`/api/client/projects/${project.id}/applications?page=1&pageSize=2`);
+      const response = await apiClient.get<{ items: Applicant[] }>(
+        `/api/client/projects/${project.id}/applications?page=1&pageSize=100`,
+      );
       setAllApplicants(response.data.items);
-      setHasNextPage(response.data.hasNext);
     } catch (error) {
       alert("지원자 정보를 가져오는 데 실패했습니다.");
       setIsModalOpen(false);
@@ -80,24 +75,8 @@ export default function ClientProjects() {
     }
   };
 
-  const handleLoadMore = async () => {
-    if (!currentProjectId || !hasNextPage) return;
-    const nextPage = modalPage + 1;
-
-    try {
-      const response = await apiClient.get<{
-        items: Applicant[];
-        hasNext: boolean;
-      }>(
-        `/api/client/projects/${currentProjectId}/applications?page=${nextPage}&pageSize=2`,
-      );
-
-      setAllApplicants((prev) => [...prev, ...response.data.items]);
-      setModalPage(nextPage);
-      setHasNextPage(response.data.hasNext);
-    } catch (error) {
-      alert("추가 지원자를 불러오는 데 실패했습니다.");
-    }
+  const handleLoadMore = () => {
+    setVisibleCount((prev) => prev + PAGE_SIZE);
   };
 
   const handleViewApplicantDetail = (applicant: Applicant) => {
@@ -143,20 +122,31 @@ export default function ClientProjects() {
 
                 <InfoSummaryGrid>
                   <SummaryItem>
-                    <Label>고용 형태</Label>
+                    <Label>계약 형태</Label>
                     <Value>{project.employmentTypeLabel}</Value>
                   </SummaryItem>
+
                   <SummaryItem>
-                    <Label>예산 / 기간</Label>
-                    <Value>
-                      {project.budget.toLocaleString()} 만원 /{" "}
-                      {project.estimatedDuration}
-                    </Value>
+                    <Label>예상 금액</Label>
+                    <Value>{project.budget.toLocaleString()} 만원</Value>
                   </SummaryItem>
+
                   <SummaryItem>
-                    <Label>현재 지원자</Label>
+                    <Label>지원자 수</Label>
                     <Value $highlight={project.applicantCount > 0}>
                       {project.applicantCount} 명
+                    </Value>
+                  </SummaryItem>
+
+                  <SummaryItem>
+                    <Label>모집 마감일 (D-day)</Label>
+                    <Value $danger={project.dDay && project.dDay.value <= 3}>
+                      {project.deadline}{" "}
+                      <DDaySpan
+                        $urgent={project.dDay && project.dDay.value <= 3}
+                      >
+                        ({project.dDay?.label})
+                      </DDaySpan>
                     </Value>
                   </SummaryItem>
                 </InfoSummaryGrid>
@@ -193,22 +183,36 @@ export default function ClientProjects() {
                   <ModalProjectTitle>{selectedProject.title}</ModalProjectTitle>
                   <SummaryGrid>
                     <SummaryRow>
-                      <SLabel>예산 / 기간</SLabel>
-                      <SValue>
-                        {selectedProject.budget.toLocaleString()} 만원 /{" "}
-                        {selectedProject.estimatedDuration}
+                      <SLabel>모집방식</SLabel>
+                      <SValue>{selectedProject.employmentTypeLabel}</SValue>
+                    </SummaryRow>
+                    <SummaryRow>
+                      <SLabel>기획 상태</SLabel>
+                      <SValue>{selectedProject.planningStatus}</SValue>
+                    </SummaryRow>
+                    <SummaryRow>
+                      <SLabel>예상 비용</SLabel>
+                      <SValue $orange>
+                        {selectedProject.budget.toLocaleString()} 만원
                       </SValue>
                     </SummaryRow>
                     <SummaryRow>
-                      <SLabel>분야 / 카테고리</SLabel>
-                      <SValue>
-                        {selectedProject.fields.join(", ")} /{" "}
-                        {selectedProject.projectCategory}
-                      </SValue>
+                      <SLabel>예상 기간</SLabel>
+                      <SValue>{selectedProject.estimatedDuration}</SValue>
+                    </SummaryRow>
+                    <SummaryRow>
+                      <SLabel>미팅 지역</SLabel>
+                      <SValue>{selectedProject.meetingRegion}</SValue>
+                    </SummaryRow>
+                    <SummaryRow>
+                      <SLabel>카테고리</SLabel>
+                      <SValue>{selectedProject.projectCategory}</SValue>
                     </SummaryRow>
                     <SummaryRow style={{ gridColumn: "1 / -1" }}>
-                      <SLabel>필요 기술</SLabel>
-                      <SValue>{selectedProject.skills.join(", ")}</SValue>
+                      <SLabel>필요 기술 스택</SLabel>
+                      <SValue>
+                        {selectedProject.skills.join(", ") || "-"}
+                      </SValue>
                     </SummaryRow>
                   </SummaryGrid>
 
@@ -216,9 +220,7 @@ export default function ClientProjects() {
 
                   <SubSectionTitle>
                     지원자 리스트{" "}
-                    <ApplicantCount>
-                      ({selectedProject.applicantCount}명)
-                    </ApplicantCount>
+                    <ApplicantCount>({allApplicants.length}명)</ApplicantCount>
                   </SubSectionTitle>
 
                   {allApplicants.length === 0 ? (
@@ -227,27 +229,82 @@ export default function ClientProjects() {
                     </CentredMessage>
                   ) : (
                     <ApplicantList>
-                      {allApplicants.map((app, index) => (
-                        <ApplicantSimpleRow key={app.id}>
-                          <AppRowInfo>
-                            <AppRowName>
-                              지원자 #{index + 1}{" "}
-                              {app.developerName && `(${app.developerName})`}
-                            </AppRowName>
-                            <AppRowMeta>
-                              지원일:{" "}
-                              {new Date(app.createdAt).toLocaleDateString()}
-                            </AppRowMeta>
-                          </AppRowInfo>
-                          <ViewDetailBtn
-                            onClick={() => handleViewApplicantDetail(app)}
-                          >
-                            해당 지원서 보기
-                          </ViewDetailBtn>
-                        </ApplicantSimpleRow>
-                      ))}
+                      {allApplicants
+                        .slice(0, visibleCount)
+                        .map((app, index) => (
+                          <ApplicantCardWrapper key={app.id}>
+                            <ApplicantCardTop>
+                              <AppRowInfo>
+                                <AppRowName>
+                                  지원자 #{index + 1}{" "}
+                                  {app.developerName &&
+                                    `(${app.developerName})`}
+                                </AppRowName>
+                                <AppRowMeta>
+                                  지원일:{" "}
+                                  {new Date(app.createdAt).toLocaleDateString()}
+                                </AppRowMeta>
+                              </AppRowInfo>
+                              <ViewDetailBtn
+                                onClick={() => handleViewApplicantDetail(app)}
+                              >
+                                해당 지원서 보기
+                              </ViewDetailBtn>
+                            </ApplicantCardTop>
 
-                      {hasNextPage && (
+                            <ApplicantMiniGrid>
+                              {app.applicationType === "contract" ? (
+                                <>
+                                  <MiniInfoItem>
+                                    <MiniLabel>제안 금액</MiniLabel>
+                                    <MiniValue $highlight>
+                                      {(
+                                        app.proposedAmount || 0
+                                      ).toLocaleString()}{" "}
+                                      만원
+                                    </MiniValue>
+                                  </MiniInfoItem>
+                                  <MiniInfoItem>
+                                    <MiniLabel>과업 일수</MiniLabel>
+                                    <MiniValue>
+                                      {app.workDays || 0} 일
+                                    </MiniValue>
+                                  </MiniInfoItem>
+                                </>
+                              ) : (
+                                <>
+                                  <MiniInfoItem>
+                                    <MiniLabel>기술구분</MiniLabel>
+                                    <MiniValue>
+                                      {app.techCategory || "-"}
+                                    </MiniValue>
+                                  </MiniInfoItem>
+                                  <MiniInfoItem>
+                                    <MiniLabel>연차구분</MiniLabel>
+                                    <MiniValue>
+                                      {app.careerLevel || "-"}
+                                    </MiniValue>
+                                  </MiniInfoItem>
+                                  <MiniInfoItem>
+                                    <MiniLabel>인원 수</MiniLabel>
+                                    <MiniValue>
+                                      {app.headcount || 1} 명
+                                    </MiniValue>
+                                  </MiniInfoItem>
+                                  <MiniInfoItem>
+                                    <MiniLabel>제안 임금</MiniLabel>
+                                    <MiniValue $highlight>
+                                      {(app.monthlyRate || 0).toLocaleString()}{" "}
+                                      만원
+                                    </MiniValue>
+                                  </MiniInfoItem>
+                                </>
+                              )}
+                            </ApplicantMiniGrid>
+                          </ApplicantCardWrapper>
+                        ))}
+
+                      {visibleCount < allApplicants.length && (
                         <LoadMoreContainer>
                           <LoadMoreButton onClick={handleLoadMore}>
                             더보기 ▼
@@ -314,7 +371,18 @@ export default function ClientProjects() {
                       ) : (
                         <>
                           <SummaryRow>
-                            <SLabel>제안 월급여</SLabel>
+                            <SLabel>기술구분 / 연차구분</SLabel>
+                            <SValue>
+                              {selectedApplicant.techCategory} /{" "}
+                              {selectedApplicant.careerLevel}
+                            </SValue>
+                          </SummaryRow>
+                          <SummaryRow>
+                            <SLabel>인원 수</SLabel>
+                            <SValue>{selectedApplicant.headcount} 명</SValue>
+                          </SummaryRow>
+                          <SummaryRow style={{ gridColumn: "1 / -1" }}>
+                            <SLabel>제안 임금(월)</SLabel>
                             <SValue
                               style={{ color: "#ff6b00", fontWeight: "bold" }}
                             >
@@ -323,10 +391,6 @@ export default function ClientProjects() {
                               ).toLocaleString()}{" "}
                               만원
                             </SValue>
-                          </SummaryRow>
-                          <SummaryRow>
-                            <SLabel>투입 인원</SLabel>
-                            <SValue>{selectedApplicant.headcount} 명</SValue>
                           </SummaryRow>
                         </>
                       )}
@@ -461,34 +525,50 @@ const ProjectTitle = styled.h3`
 
 const InfoSummaryGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   background-color: #fafafa;
-  padding: 12px;
+  padding: 15px 12px;
   border-radius: 4px;
   text-align: center;
   border: 1px solid #f0f0f0;
   margin-bottom: 16px;
+
+  @media (max-width: 768px) {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
 `;
 
 const SummaryItem = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   border-right: 1px solid #eee;
+
   &:last-child {
     border-right: none;
   }
+
+  @media (max-width: 768px) {
+    border-right: none;
+  }
+}
 `;
 
 const Label = styled.span`
   font-size: 12px;
   color: #888;
+  font-weight: 500;
 `;
 
-const Value = styled.span<{ $highlight?: boolean }>`
+const Value = styled.span<{ $highlight?: boolean; $danger?: boolean }>`
   font-size: 14px;
   font-weight: bold;
-  color: ${(props) => (props.$highlight ? "#ff6b00" : "#333")};
+  color: ${(props) => {
+    if (props.$danger) return "#ff3333";
+    if (props.$highlight) return "#ff6b00";
+    return "#333";
+  }};
 `;
 
 const ActionRow = styled.div`
@@ -615,6 +695,7 @@ const SummaryGrid = styled.div`
   background-color: #fafafa;
   padding: 15px;
   border-radius: 6px;
+  border: 1px solid #eef0f2;
 `;
 
 const SummaryRow = styled.div`
@@ -629,9 +710,10 @@ const SLabel = styled.span`
   font-weight: bold;
 `;
 
-const SValue = styled.span`
+const SValue = styled.span<{ $orange?: boolean }>`
   font-size: 14px;
-  color: #333;
+  color: ${(props) => (props.$orange ? "#ff6b00" : "#333")};
+  font-weight: ${(props) => (props.$orange ? "bold" : "normal")};
 `;
 
 const Divider = styled.hr`
@@ -646,44 +728,69 @@ const ApplicantList = styled.div`
   gap: 12px;
 `;
 
-const ApplicantSimpleRow = styled.div`
+const ApplicantCardWrapper = styled.div`
+  background-color: white;
+  border: 1px solid #e1e1e1;
+  padding: 15px;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+`;
+
+const ApplicantCardTop = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background-color: white;
-  border: 1px solid #ddd;
-  padding: 15px;
-  border-radius: 6px;
 `;
 
-const AppRowInfo = styled.div`
+const ApplicantMiniGrid = styled.div`
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  flex-wrap: wrap;
+  gap: 10px;
+  background-color: #f8f9fa;
+  padding: 10px 12px;
+  border-radius: 4px;
+  border: 1px solid #f1f3f5;
 `;
 
-const AppRowName = styled.span`
-  font-size: 15px;
-  font-weight: bold;
-  color: #222;
+const MiniInfoItem = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  border-right: 1px solid #e9ecef;
+  padding-right: 10px;
+  &:last-child {
+    border-right: none;
+    padding-right: 0;
+  }
 `;
 
-const AppRowMeta = styled.span`
-  font-size: 12px;
-  color: #888;
+const MiniLabel = styled.span`
+  color: #868e96;
+  font-weight: 500;
+`;
+
+const MiniValue = styled.span<{ $highlight?: boolean }>`
+  color: ${(props) => (props.$highlight ? "#ff6b00" : "#212529")};
+  font-weight: ${(props) => (props.$highlight ? "bold" : "600")};
 `;
 
 const ViewDetailBtn = styled.button`
-  padding: 8px 16px;
-  background-color: #ff6b00;
-  color: white;
-  border: none;
+  padding: 6px 14px;
+  background-color: white;
+  border: 1px solid #ff6b00;
+  color: #ff6b00;
   border-radius: 4px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: bold;
   cursor: pointer;
+  transition: all 0.2s ease;
   &:hover {
-    background-color: #e66000;
+    background-color: #ff6b00;
+    color: white;
   }
 `;
 
@@ -751,4 +858,27 @@ const ModalActionBtn = styled.button`
   &:hover {
     opacity: 0.9;
   }
+`;
+
+const AppRowInfo = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+`;
+
+const AppRowName = styled.span`
+  font-size: 15px;
+  font-weight: bold;
+  color: #222;
+`;
+
+const AppRowMeta = styled.span`
+  font-size: 12px;
+  color: #888;
+`;
+
+const DDaySpan = styled.span<{ $urgent?: boolean }>`
+  font-size: 13px;
+  color: ${(props) => (props.$urgent ? "#ff3333" : "#666")};
+  font-weight: bold;
 `;
